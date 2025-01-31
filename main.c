@@ -225,17 +225,17 @@ static void delay_us(uint32_t us) {
 #ifdef CSR_VIDEO_FRAMEBUFFER_BASE
 static void vga_test(void) {
     // Configurer les paramètres de timing pour un écran VGA de 800x600 à 60Hz
-    video_framebuffer_vtg_hres_write(SCREEN_WIDTH);  
+    /*video_framebuffer_vtg_hres_write(SCREEN_WIDTH);  
     video_framebuffer_vtg_vres_write(SCREEN_HEIGHT);  
     video_framebuffer_vtg_hsync_start_write(856);  // Horizontal sync start
 	video_framebuffer_vtg_hsync_end_write(976);    // Horizontal sync end
 	video_framebuffer_vtg_hscan_write(1056);       // Total pixels per line
 	video_framebuffer_vtg_vsync_start_write(601);  // Vertical sync start
 	video_framebuffer_vtg_vsync_end_write(604);    // Vertical sync end
-	video_framebuffer_vtg_vscan_write(625);        // Total lines per frame  
+	video_framebuffer_vtg_vscan_write(625);        // Total lines per frame   */    
 
     // Activer le VTG pour commencer à générer les signaux de synchronisation
-    video_framebuffer_vtg_enable_write(1);  
+    //video_framebuffer_vtg_enable_write(1);  
 
     // Obtenir la base du framebuffer
     uint32_t* framebuffer = (uint32_t*)video_framebuffer_dma_base_read();
@@ -244,12 +244,12 @@ static void vga_test(void) {
 
     int y = SCREEN_HEIGHT - size;
 
-    while (y >= 0) 
-    {
-        clear_screen(back_buffer);
-        draw_square(back_buffer, 390, y, size, 0xF0F00F); // Carré rouge
-        swap_buffers(framebuffer);
-        delay_ms(5);
+    while (y >= 0) {
+
+
+        clear_screen(framebuffer);
+        draw_square(framebuffer, 390, y, size, 0xF0F00F); // Carré rouge
+        delay_ms(100);
         y -= 5;
     }
 }
