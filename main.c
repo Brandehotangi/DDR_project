@@ -10,23 +10,13 @@
 #define SCREEN_WIDTH 800
 #define SCREEN_HEIGHT 600
 
-#define MAX_COUNT 300 // 5 secondes à 60 Hz
-#define TIMER_LOAD_VALUE (100000000 / 60) // Valeur de chargement pour 60 Hz avec 100 MHz
+#define SYS_CLOCK_HZ 100000000  // Remplacer par la fréquence de votre horloge (100 MHz par exemple)
 
 #include <stdint.h>
-#include <time.h>
 
-// Fonction pour initialiser le timer
-static void timer_init(void) {
-    timer0_load_write(TIMER_LOAD_VALUE); // Charger la valeur initiale
-    timer0_reload_write(TIMER_LOAD_VALUE); // Définir la valeur de rechargement
-    timer0_en_write(1); // Activer le timer
-}
+uint32_t* back_buffer = (uint32_t*) 0x41400001;
 
-// Fonction pour vérifier si le timer a atteint zéro
-static int timer_has_expired(void) {
-    return timer0_ev_pending_read() & (1 << CSR_TIMER0_EV_PENDING_ZERO_OFFSET);
-}
+
 
 /*-----------------------------------------------------------------------*/
 /* Uart                                                                  */
@@ -177,90 +167,108 @@ static void led_cmd(void)
 }
 #endif
 
-// Fonction pour dessiner une flèche bleue
-static void draw_arrow(uint32_t* framebuffer, int x, int y) {
-    // Définir la couleur bleue
-    uint32_t blue_color = 0x0000FF;
-
-    // Dessiner une flèche simple
-    // La flèche est représentée par un triangle
-    // Exemple de flèche de 10 pixels de large et 20 pixels de haut
-    for (int i = 0; i < 20; i++) {
-        for (int j = -5; j <= 5; j++) {
-            if (x + j >= 0 && x + j < SCREEN_WIDTH && y + i >= 0 && y + i < SCREEN_HEIGHT) {
-                framebuffer[(y + i) * SCREEN_WIDTH + (x + j)] = blue_color; // Dessiner la flèche
-            }
-        }
-        // Réduire la largeur de la flèche à mesure qu'elle monte
-        if (i < 10) {
-            for (int j = -1; j <= 1; j++) {
-                if (x + j >= 0 && x + j < SCREEN_WIDTH && y + 20 >= 0 && y + 20 < SCREEN_HEIGHT) {
-                    framebuffer[(y + 20) * SCREEN_WIDTH + (x + j)] = blue_color; // Dessiner la base de la flèche
-                }
-            }
+// Fonction pour dessiner un carré
+static void draw_square(uint32_t* buffer_base, int x, int y, int SQUARE_SIZE, uint32_t color) {
+    for (int i = 0; i < SQUARE_SIZE; i++) {
+        for (int j = 0; j < SQUARE_SIZE; j++) {
+            buffer_base[(y + i) * SCREEN_WIDTH + (x + j)] = color;
         }
     }
 }
 
+// Fonction pour effacer l'écran
+static void clear_screen(uint32_t* buffer_base) {
+    for (int i = 0; i < SCREEN_WIDTH * SCREEN_HEIGHT; i++) {
+        buffer_base[i] = 0; // Noir
+    }
+}
+
+// Fonction pour copier le buffer caché vers l'affichage (échange de buffers)
+static void swap_buffers(uint32_t* framebuffer_base) {
+    uint32_t* temp = framebuffer_base;
+    framebuffer_base = back_buffer;
+    back_buffer = temp;
+}
+
+// Fonction de délai en millisecondes
+static void delay_ms(uint32_t ms) {
+    // Calculer la valeur à charger dans le timer
+    uint32_t load_value = SYS_CLOCK_HZ/1000*ms;
+
+    timer0_en_write(0);
+    timer0_reload_write(0);          // Définir la valeur de rechargement (pour un timer continu)
+    timer0_load_write(load_value);            // Charger la valeur dans le timer   
+    timer0_en_write(1);                       // Activer le timer
+    timer0_update_value_write(1);
+    // Attendre que le timer expire
+    while(timer0_value_read())
+    {
+    	timer0_update_value_write(1);
+    }
+    ;  // Vérifier si le timer a expiré (bit 0 de la valeur)
+
+    // Désactiver le timer après utilisation
+    timer0_en_write(0);
+}
+
+// Fonction de délai en millisecondes
+static void delay_us(uint32_t us) {
+    // Calculer la valeur à charger dans le timer
+    uint32_t load_value = SYS_CLOCK_HZ/1000000*us;
+
+    timer0_en_write(0);
+    timer0_reload_write(0);          // Définir la valeur de rechargement (pour un timer continu)
+    timer0_load_write(load_value);            // Charger la valeur dans le timer   
+    timer0_en_write(1);                       // Activer le timer
+    timer0_update_value_write(1);
+    // Attendre que le timer expire
+    while(timer0_value_read())
+    {
+    	timer0_update_value_write(1);
+    }
+    ;  // Vérifier si le timer a expiré (bit 0 de la valeur)
+
+    // Désactiver le timer après utilisation
+    timer0_en_write(0);
+}
+
+
 #ifdef CSR_VIDEO_FRAMEBUFFER_BASE
 static void vga_test(void) {
     // Configurer les paramètres de timing pour un écran VGA de 800x600 à 60Hz
-    video_framebuffer_vtg_hres_write(SCREEN_WIDTH);  
+    /*video_framebuffer_vtg_hres_write(SCREEN_WIDTH);  
     video_framebuffer_vtg_vres_write(SCREEN_HEIGHT);  
-    video_framebuffer_vtg_hsync_start_write(856);  
-    video_framebuffer_vtg_hsync_end_write(976);    
-    video_framebuffer_vtg_hscan_write(1056);       
-    video_framebuffer_vtg_vsync_start_write(601);  
-    video_framebuffer_vtg_vsync_end_write(604);    
-    video_framebuffer_vtg_vscan_write(625);        
+    video_framebuffer_vtg_hsync_start_write(856);  // Horizontal sync start
+	video_framebuffer_vtg_hsync_end_write(976);    // Horizontal sync end
+	video_framebuffer_vtg_hscan_write(1056);       // Total pixels per line
+	video_framebuffer_vtg_vsync_start_write(601);  // Vertical sync start
+	video_framebuffer_vtg_vsync_end_write(604);    // Vertical sync end
+	video_framebuffer_vtg_vscan_write(625);        // Total lines per frame   */    
 
     // Activer le VTG pour commencer à générer les signaux de synchronisation
-    video_framebuffer_vtg_enable_write(1);  
+    //video_framebuffer_vtg_enable_write(1);  
 
     // Obtenir la base du framebuffer
     uint32_t* framebuffer = (uint32_t*)video_framebuffer_dma_base_read();
 
-    // Position initiale de la flèche
-    int arrow_x = SCREEN_WIDTH / 2; // Centré horizontalement
-    int arrow_y = 0; // Commence en haut de l'écran
+    back_buffer = (uint32_t*) malloc(SCREEN_WIDTH * SCREEN_HEIGHT * sizeof(uint32_t));
 
-    // Initialiser le timer
-    timer_init();
+	if (!back_buffer) {
+	    puts("Erreur d'allocation mémoire !");
+	}
 
-    uint32_t count = 0; // Compteur pour les expirations du timer
+    int size = 20;
 
-    while (1) {
-        // Effacer l'écran (remplir de noir)
-        for (int y = 0; y < SCREEN_HEIGHT; y++) {
-            for (int x = 0; x < SCREEN_WIDTH; x++) {
-                framebuffer[y * SCREEN_WIDTH + x] = 0x000000; // Fond noir
-            }
-        }
+    int y = SCREEN_HEIGHT - size;
 
-        // Dessiner la flèche à la position actuelle
-        draw_arrow(framebuffer, arrow_x, arrow_y);
+    while (y >= 0) {
 
-        // Mettre à jour la position de la flèche
-        arrow_y += 1; // Descendre d'un pixel
 
-        // Réinitialiser la position si la flèche sort de l'écran
-        if (arrow_y > SCREEN_HEIGHT) {
-            arrow_y = 0; // Remonter en haut de l'écran
-        }
-
-        // Vérifier si le timer a expiré
-        if (timer_has_expired()) {
-            count++; // Incrémenter le compteur
-
-            // Réinitialiser le timer
-            timer0_ev_pending_write(1); // Effacer le drapeau d'expiration
-            timer0_load_write(TIMER_LOAD_VALUE); // Recharger la valeur
-
-            // Vérifier si 5 secondes se sont écoulées
-            if (count >= MAX_COUNT) {
-                break; // Sortir de la boucle après 5 secondes
-            }
-        }
+        clear_screen(back_buffer);
+        draw_square(back_buffer, 390, y, size, 0xF0F00F); // Carré rouge
+        swap_buffers(framebuffer);
+        delay_ms(5);
+        y -= 5;
     }
 
     // Optionnel : Ajoutez du code ici pour gérer la fin du programme, comme éteindre l'affichage ou libérer des ressources.
